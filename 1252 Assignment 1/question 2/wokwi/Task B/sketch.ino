@@ -1,0 +1,172 @@
+/*
+ * Task B - Press-Type Detection Button
+ * Name: Fatima Zimal
+ * Registration Number: 23-NTU-CS-1252
+ TASK B
+ * 
+ * Description: Single button with short press (toggle LED) and long press (play buzzer)
+ * Displays events on OLED
+ */
+
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+// OLED display configuration
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+#define OLED_RESET -1
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+// Pin definitions
+const int LED_PIN = 13;
+const int BUTTON_PIN = 18;
+const int BUZZER_PIN = 27;
+
+// Button state tracking
+bool lastButtonState = HIGH;
+bool ledState = false;
+unsigned long buttonPressTime = 0;
+unsigned long buttonReleaseTime = 0;
+bool buttonPressed = false;
+bool longPressTriggered = false;
+
+// Long press threshold (1.5 seconds = 1500 milliseconds)
+const unsigned long longPressThreshold = 1500;
+const unsigned long debounceDelay = 50;
+
+// For display updates
+String lastEvent = "Ready";
+unsigned long lastEventTime = 0;
+
+void setup() {
+  // Initialize serial monitor
+  Serial.begin(115200);
+  
+  // Initialize pins
+  pinMode(LED_PIN, OUTPUT);
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+  pinMode(BUZZER_PIN, OUTPUT);
+  
+  digitalWrite(LED_PIN, LOW);
+  digitalWrite(BUZZER_PIN, LOW);
+  
+  // Initialize OLED display
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println(F("SSD1306 allocation failed"));
+    for (;;);
+  }
+  
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0, 0);
+  display.println("Task B: Press Type");
+  display.println("Detection");
+  display.println("");
+  display.println("Short: Toggle LED");
+  display.println("Long: Buzzer Tone");
+  display.display();
+  delay(2000);
+  
+  updateDisplay();
+}
+
+void loop() {
+  bool currentButtonState = digitalRead(BUTTON_PIN);
+  unsigned long currentTime = millis();
+  
+  // Button just pressed (HIGH to LOW transition)
+  if (currentButtonState == LOW && lastButtonState == HIGH) {
+    buttonPressTime = currentTime;
+    buttonPressed = true;
+    longPressTriggered = false;
+    Serial.println("Button pressed");
+  }
+  
+  // Button being held down
+  if (currentButtonState == LOW && buttonPressed) {
+    unsigned long pressDuration = currentTime - buttonPressTime;
+    
+    // Check for long press (only trigger once)
+    if (pressDuration >= longPressThreshold && !longPressTriggered) {
+      longPressTriggered = true;
+      handleLongPress();
+    }
+  }
+  
+  // Button released (LOW to HIGH transition)
+  if (currentButtonState == HIGH && lastButtonState == LOW) {
+    buttonReleaseTime = currentTime;
+    unsigned long pressDuration = buttonReleaseTime - buttonPressTime;
+    
+    if (buttonPressed) {
+      // Only handle short press if long press wasn't triggered
+      if (pressDuration < longPressThreshold && !longPressTriggered) {
+        handleShortPress();
+      }
+      buttonPressed = false;
+    }
+    
+    Serial.print("Button released after: ");
+    Serial.print(pressDuration);
+    Serial.println(" ms");
+  }
+  
+  lastButtonState = currentButtonState;
+}
+
+void handleShortPress() {
+  // Toggle LED
+  ledState = !ledState;
+  digitalWrite(LED_PIN, ledState);
+  
+  lastEvent = ledState ? "LED: ON" : "LED: OFF";
+  lastEventTime = millis();
+  updateDisplay();
+  
+  Serial.println("Short press detected - LED toggled");
+}
+
+void handleLongPress() {
+  // Play buzzer tone
+  lastEvent = "BUZZER";
+  updateDisplay();
+  
+  Serial.println("Long press detected - Playing buzzer");
+  
+  // Play a pleasant tone pattern
+  tone(BUZZER_PIN, 1000, 200);
+  delay(250);
+  tone(BUZZER_PIN, 1500, 200);
+  delay(250);
+  tone(BUZZER_PIN, 2000, 300);
+  delay(350);
+  noTone(BUZZER_PIN);
+  
+  lastEvent = "Buzzer Done";
+  updateDisplay();
+}
+
+void updateDisplay() {
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setCursor(0, 0);
+  display.println("Task B: Press Type");
+  display.println("----------------");
+  
+  // Show LED status
+  display.setTextSize(1);
+  display.setCursor(0, 20);
+  display.print("LED Status: ");
+  display.println(ledState ? "ON" : "OFF");
+  
+  // Show last event
+  display.println("");
+  display.println("Last Event:");
+  display.setTextSize(2);
+  display.setCursor(0, 45);
+  display.println(lastEvent);
+  
+  display.display();
+}

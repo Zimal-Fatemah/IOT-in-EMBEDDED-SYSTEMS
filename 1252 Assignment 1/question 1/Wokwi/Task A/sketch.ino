@@ -1,0 +1,214 @@
+/*
+ * Task A - LED Mode Cycling with OLED Display
+ * Name: Fatima Zimal
+ * Registration Number: 23-NTU-CS-1252
+ * TASK A
+ * 
+ * Description: Cycles through LED modes using Button 1, displays state on OLED
+ * Button 2 resets to OFF state
+ */
+
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+// OLED display configuration
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+#define OLED_RESET -1
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+// Pin definitions - Using PWM-capable pins
+const int LED_PIN_1 = 25;  // Changed to PWM-capable pin
+const int LED_PIN_2 = 26;  // Changed to PWM-capable pin
+const int LED_PIN_3 = 27;  // Changed to PWM-capable pin
+const int BUTTON_MODE = 18;
+const int BUTTON_RESET = 19;
+
+// Mode states
+enum LEDMode {
+  MODE_OFF,
+  MODE_ALTERNATE_BLINK,
+  MODE_BOTH_ON,
+  MODE_PWM_FADE
+};
+
+LEDMode currentMode = MODE_OFF;
+bool lastButtonModeState = HIGH;
+bool lastButtonResetState = HIGH;
+unsigned long lastDebounceTime = 0;
+const unsigned long debounceDelay = 50;
+
+// For blinking and fading
+unsigned long lastBlinkTime = 0;
+const unsigned long blinkInterval = 500;
+bool blinkState = false;
+int fadeValue = 0;
+int fadeDirection = 5;
+
+void setup() {
+  // Initialize serial monitor
+  Serial.begin(115200);
+  
+  // Initialize LED pins
+  pinMode(LED_PIN_1, OUTPUT);
+  pinMode(LED_PIN_2, OUTPUT);
+  pinMode(LED_PIN_3, OUTPUT);
+  
+  // Initialize button pins with internal pull-up
+  pinMode(BUTTON_MODE, INPUT_PULLUP);
+  pinMode(BUTTON_RESET, INPUT_PULLUP);
+  
+  // Initialize OLED display
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println(F("SSD1306 allocation failed"));
+    for (;;);
+  }
+  
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0, 0);
+  display.println("Task A: LED Modes");
+  display.println("Ready!");
+  display.display();
+  delay(2000);
+  
+  updateDisplay();
+}
+
+void loop() {
+  // Read button states
+  bool buttonModeReading = digitalRead(BUTTON_MODE);
+  bool buttonResetReading = digitalRead(BUTTON_RESET);
+  
+  // Check mode button with debouncing
+  if (buttonModeReading != lastButtonModeState) {
+    lastDebounceTime = millis();
+  }
+  
+  if ((millis() - lastDebounceTime) > debounceDelay) {
+    if (buttonModeReading == LOW && lastButtonModeState == HIGH) {
+      // Button pressed - cycle to next mode
+      cycleMode();
+      updateDisplay();
+      delay(200); // Additional delay to prevent double-press
+    }
+  }
+  lastButtonModeState = buttonModeReading;
+  
+  // Check reset button
+  if (buttonResetReading == LOW && lastButtonResetState == HIGH) {
+    currentMode = MODE_OFF;
+    fadeValue = 0;  // Reset fade value
+    updateDisplay();
+    delay(200);
+  }
+  lastButtonResetState = buttonResetReading;
+  
+  // Execute current mode behavior
+  executeMode();
+}
+
+void cycleMode() {
+  // Cycle through modes: OFF -> ALTERNATE -> ON -> FADE -> OFF
+  switch (currentMode) {
+    case MODE_OFF:
+      currentMode = MODE_ALTERNATE_BLINK;
+      break;
+    case MODE_ALTERNATE_BLINK:
+      currentMode = MODE_BOTH_ON;
+      break;
+    case MODE_BOTH_ON:
+      currentMode = MODE_PWM_FADE;
+      fadeValue = 0;  // Reset fade value when entering fade mode
+      break;
+    case MODE_PWM_FADE:
+      currentMode = MODE_OFF;
+      break;
+  }
+  
+  Serial.print("Mode changed to: ");
+  Serial.println(currentMode);
+}
+
+void executeMode() {
+  switch (currentMode) {
+    case MODE_OFF:
+      digitalWrite(LED_PIN_1, LOW);
+      digitalWrite(LED_PIN_2, LOW);
+      digitalWrite(LED_PIN_3, LOW);
+      break;
+      
+    case MODE_ALTERNATE_BLINK:
+      if (millis() - lastBlinkTime >= blinkInterval) {
+        blinkState = !blinkState;
+        lastBlinkTime = millis();
+        
+        if (blinkState) {
+          // LEDs 1 and 2 ON, LED 3 OFF
+          digitalWrite(LED_PIN_1, HIGH);
+          digitalWrite(LED_PIN_2, HIGH);
+          digitalWrite(LED_PIN_3, LOW);
+        } else {
+          // LED 3 ON, LEDs 1 and 2 OFF
+          digitalWrite(LED_PIN_1, LOW);
+          digitalWrite(LED_PIN_2, LOW);
+          digitalWrite(LED_PIN_3, HIGH);
+        }
+      }
+      break;
+      
+    case MODE_BOTH_ON:
+      digitalWrite(LED_PIN_1, HIGH);
+      digitalWrite(LED_PIN_2, HIGH);
+      digitalWrite(LED_PIN_3, HIGH);
+      break;
+      
+    case MODE_PWM_FADE:
+      // Use analogWrite for PWM fading
+      analogWrite(LED_PIN_1, fadeValue);
+      analogWrite(LED_PIN_2, fadeValue);
+      analogWrite(LED_PIN_3, fadeValue);
+      
+      fadeValue += fadeDirection;
+      
+      if (fadeValue <= 0 || fadeValue >= 255) {
+        fadeDirection = -fadeDirection;
+      }
+      
+      delay(15); // Smooth fading effect
+      break;
+  }
+}
+
+void updateDisplay() {
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setCursor(0, 0);
+  display.println("Task A: LED Modes");
+  display.println("----------------");
+  display.setTextSize(2);
+  display.setCursor(0, 20);
+  
+  switch (currentMode) {
+    case MODE_OFF:
+      display.println("Mode 0:");
+      display.println("BOTH OFF");
+      break;
+    case MODE_ALTERNATE_BLINK:
+      display.println("Mode 1:");
+      display.println("ALT BLINK");
+      break;
+    case MODE_BOTH_ON:
+      display.println("Mode 2:");
+      display.println("BOTH ON");
+      break;
+    case MODE_PWM_FADE:
+      display.println("Mode 3:");
+      display.println("PWM FADE");
+      break;
+  }
+  
+  display.display();
+}
